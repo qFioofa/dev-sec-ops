@@ -1,0 +1,90 @@
+stages:
+  - build
+  - test
+  - security-scan
+  - report
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: "/certs"
+  TRIVY_SERVER_URL: "http://trivy:8080"
+  DEPENDENCY_TRACK_URL: "http://dependency-track:8080"
+  PROJECT_NAME: "${CI_PROJECT_NAME}"
+  PROJECT_VERSION: "${CI_COMMIT_REF_NAME}-${CI_COMMIT_SHORT_SHA}"
+
+before_script:
+  - echo "Pipeline started for ${PROJECT_NAME}:${PROJECT_VERSION}"
+
+build_app:
+  stage: build
+  image: docker:20.10.16
+  services:
+    - docker:20.10.16-dind
+  script:
+    - docker build -t ${CI_PROJECT_NAME}:${CI_COMMIT_SHA} .
+    - docker images
+  artifacts:
+    paths:
+      - dist/
+    expire_in: 1 hour
+  only:
+    - main
+
+security_scan_dependencies:
+  stage: security-scan
+  image: aquasec/trivy:0.50.1
+  script:
+    - trivy fs --format cyclonedx --output bom.json ./
+    - trivy fs --format table ./
+  artifacts:
+    reports:
+      dependency_scanning: bom.json
+    paths:
+      - bom.json
+  allow_failure: true
+  only:
+    - main
+
+security_scan_image:
+  stage: security-scan
+  image: aquasec/trivy:0.50.1
+  script:
+    - docker build -t ${CI_PROJECT_NAME}:${CI_COMMIT_SHA} .
+    - trivy image --format cyclonedx --output image-bom.json ${CI_PROJECT_NAME}:${CI_COMMIT_SHA}
+    - trivy image --format table ${CI_PROJECT_NAME}:${CI_COMMIT_SHA}
+  artifacts:
+    reports:
+      container_scanning: image-bom.json
+    paths:
+      - image-bom.json
+  dependencies:
+    - build_app
+  allow_failure: true
+  only:
+    - main
+
+upload_to_dependency_track:
+  stage: report
+  image: curlimages/curl:latest
+  script:
+    - |
+      if [ -f image-bom.json ]; then
+        curl -X PUT \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${DEPENDENCY_TRACK_API_KEY}" \
+          -d @image-bom.json \
+          ${DEPENDENCY_TRACK_URL}/api/v1/bom/cyclonedx?projectName=${PROJECT_NAME}&projectVersion=${PROJECT_VERSION}
+      fi
+    - |
+      if [ -f bom.json ]; then
+        curl -X PUT \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${DEPENDENCY_TRACK_API_KEY}" \
+          -d @bom.json \
+          ${DEPENDENCY_TRACK_URL}/api/v1/bom/cyclonedx?projectName=${PROJECT_NAME}&projectVersion=${PROJECT_VERSION}
+      fi
+  dependencies:
+    - security_scan_dependencies
+    - security_scan_image
+  only:
+    - main

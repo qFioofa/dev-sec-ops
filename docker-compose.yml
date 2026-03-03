@@ -1,0 +1,9 @@
+networks:
+  devsecops-net:
+    driver: bridge
+
+include:
+  # - dependency-track/docker-compose.yml
+  - gitlab/docker-compose.yml
+  # - gitlab-runner/docker-compose.yml
+  # - trivy/docker-compose.yml

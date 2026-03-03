@@ -1,0 +1,9 @@
+services:
+  trivy:
+    image: aquasec/trivy:latest
+    container_name: trivy
+    entrypoint: ["trivy", "--help"]
+    networks:
+      - devsecops-net
+    profiles:
+      - manual

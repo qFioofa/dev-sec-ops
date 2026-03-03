@@ -1,0 +1,25 @@
+services:
+  dt-apiserver:
+    image: dependencytrack/apiserver:latest
+    container_name: dt-apiserver
+    ports:
+      - "8080:8080"
+    volumes:
+      - dt_data:/data
+    networks:
+      - devsecops-net
+    restart: unless-stopped
+
+  dt-frontend:
+    image: dependencytrack/frontend:latest
+    container_name: dt-frontend
+    ports:
+      - "8081:8080"
+    environment:
+      API_BASE_URL: http://dt-apiserver:8080
+    networks:
+      - devsecops-net
+    restart: unless-stopped
+
+volumes:
+  dt_data:
